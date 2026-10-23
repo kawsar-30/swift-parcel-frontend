@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { MapPin, Plus, Building2, X } from "lucide-react";
 import HubDetailsModal from "@/components/admin/HubDetailsModal";
@@ -14,8 +15,6 @@ type Hub = {
 };
 
 export default function AdminHubsPage() {
-  const [hubs, setHubs] = useState<Hub[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ name: "", city: "", address: "" });
   const [submitting, setSubmitting] = useState(false);
@@ -24,20 +23,17 @@ export default function AdminHubsPage() {
   const [selectedHubId, setSelectedHubId] = useState<string | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
-  const fetchHubs = async () => {
-    try {
-      const res = await api.get("/hubs");
-      setHubs(res.data);
-    } catch (error) {
-      console.error("Failed to fetch hubs", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    fetchHubs();
-  }, []);
+  // 1. Fetch Hubs (React Query)
+  const { data: hubs = [], isLoading } = useQuery<Hub[]>({
+    queryKey: ["hubs"],
+    queryFn: async () => {
+      const res = await api.get("/hubs");
+      return res.data;
+    },
+    staleTime: 10 * 60 * 1000, // 10 minutes cache
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,7 +42,8 @@ export default function AdminHubsPage() {
       await api.post("/hubs", formData);
       setIsModalOpen(false);
       setFormData({ name: "", city: "", address: "" });
-      fetchHubs();
+      // Notun hub add hole list refetch korbo
+      queryClient.invalidateQueries({ queryKey: ["hubs"] });
     } catch (error: any) {
       alert(error.response?.data?.detail || "Failed to create hub");
     } finally {
@@ -56,7 +53,7 @@ export default function AdminHubsPage() {
 
   const inputClass = "w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-900 placeholder-gray-400 font-medium";
 
-  if (loading) return <div className="p-8 text-center text-gray-500">Loading hubs...</div>;
+  if (isLoading) return <div className="p-8 text-center text-gray-500">Loading hubs...</div>;
 
   return (
     <div className="space-y-6">

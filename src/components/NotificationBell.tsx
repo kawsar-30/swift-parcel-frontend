@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { Bell, Package, Clock, CheckCircle, X } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -14,31 +15,24 @@ type Notification = {
 };
 
 export default function NotificationBell() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const queryClient = useQueryClient();
 
-  const fetchNotifications = async () => {
-    try {
+  // React Query ব্যবহার করে নোটিফিকেশন ফেচ করা
+  const { data: notifications = [], isLoading } = useQuery<Notification[]>({
+    queryKey: ["notifications"],
+    queryFn: async () => {
       const res = await api.get("/notifications");
-      setNotifications(res.data);
-    } catch (error) {
-      console.error("Failed to fetch notifications", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+      return res.data;
+    },
+    // পেজে ঢোকার সাথে সাথে ডেটা আনবে, তারপর ৩০ সেকেন্ড পর পর রিফ্রেশ করবে
+    refetchInterval: 30000,
+    staleTime: 15000, // ১৫ সেকেন্ড পর্যন্ত ক্যাশে থাকবে
+  });
 
-  useEffect(() => {
-    fetchNotifications();
-    // Prottek 30 seconds e refresh koro
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Bahire click korle dropdown bondho hobe
+  // বাইরে ক্লিক করলে ড্রপডাউন বন্ধ হবে
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -53,13 +47,18 @@ export default function NotificationBell() {
 
   const handleMarkAsRead = async (id: string) => {
     try {
+      // Optimistic Update (আগে UI তে আপডেট, তারপর API কল)
+      queryClient.setQueryData(["notifications"], (old: Notification[] | undefined) => {
+        if (!old) return old;
+        return old.map(n => n.id === id ? { ...n, is_read: true } : n);
+      });
+      
       await api.patch(`/notifications/${id}/read`);
-      // Local state update koro
-      setNotifications(notifications.map(n => 
-        n.id === id ? { ...n, is_read: true } : n
-      ));
+      // API সফল হলে আবার ডেটা রিফ্রেশ করব না, কারণ আমরা ইতিমধ্যে UI আপডেট করেছি
     } catch (error) {
       console.error("Failed to mark as read", error);
+      // যদি এরর হয়, আবার ডেটা রিফ্রেশ করি (আগের অবস্থায় ফিরে যাওয়ার জন্য)
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
     }
   };
 
@@ -106,7 +105,7 @@ export default function NotificationBell() {
           </div>
           
           <div className="max-h-96 overflow-y-auto">
-            {loading ? (
+            {isLoading ? (
               <div className="p-8 text-center text-gray-500">Loading...</div>
             ) : notifications.length === 0 ? (
               <div className="p-8 text-center text-gray-500 flex flex-col items-center">
@@ -144,7 +143,7 @@ export default function NotificationBell() {
             <button 
               onClick={() => {
                 setIsOpen(false);
-                router.push("/dashboard/notifications"); // Jodi alada page banate chao
+                router.push("/dashboard/notifications");
               }}
               className="text-xs font-bold text-blue-600 hover:text-blue-800"
             >

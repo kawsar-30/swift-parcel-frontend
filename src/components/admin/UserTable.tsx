@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { Search, Mail, Phone, ChevronLeft, ChevronRight, UserPlus, Loader2, Building2, Edit, Trash2 } from "lucide-react";
 import CreateUserModal from "./CreateUserModal";
@@ -25,67 +26,57 @@ type Hub = {
 };
 
 export default function UserTable({ role, title }: { role: string, title: string }) {
-  const [users, setUsers] = useState<UserData[]>([]);
-  const [hubs, setHubs] = useState<Hub[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(0);
-  const [total, setTotal] = useState(0);
   const [selectedHub, setSelectedHub] = useState<string>("all");
   const limit = 15;
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [editUser, setEditUser] = useState<UserData | null>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  
+  const queryClient = useQueryClient();
 
-  const fetchUsers = async (currentPage: number) => {
-    setLoading(true);
-    try {
-      let url = `/admin/users?role=${role}&skip=${currentPage * limit}&limit=${limit}`;
+  // 1. Fetch Users (React Query)
+  const { data: usersData, isLoading } = useQuery({
+    queryKey: ["users", role, page, selectedHub],
+    queryFn: async () => {
+      let url = `/admin/users?role=${role}&skip=${page * limit}&limit=${limit}`;
       if (selectedHub !== "all") {
         url += `&hub_id=${selectedHub}`;
       }
-      
       const res = await api.get(url);
       const data = res.data;
       
-      if (Array.isArray(data)) {
-        setUsers(data);
-        setTotal(data.length);
-      } else if (data && data.data) {
-        setUsers(Array.isArray(data.data) ? data.data : []);
-        setTotal(data.total || 0);
-      } else {
-        setUsers([]);
-        setTotal(0);
-      }
-    } catch (error) {
-      console.error("Failed to fetch users", error);
-      setUsers([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (Array.isArray(data)) return { data, total: data.length };
+      return { data: data.data || [], total: data.total || 0 };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
-  const fetchHubs = async () => {
-    try {
+  const users = usersData?.data || [];
+  const total = usersData?.total || 0;
+
+  // 2. Fetch Hubs (React Query)
+  const { data: hubs = [] } = useQuery<Hub[]>({
+    queryKey: ["hubs"],
+    queryFn: async () => {
       const res = await api.get("/hubs");
-      setHubs(res.data);
-    } catch (error) {
-      console.error("Failed to fetch hubs", error);
-    }
-  };
+      return res.data;
+    },
+    staleTime: 10 * 60 * 1000, // Hubs change hoy rarely
+  });
 
-  const fetchCurrentUser = async () => {
-    try {
+  // 3. Fetch Current User (React Query)
+  const { data: currentUser } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: async () => {
       const res = await api.get("/auth/me");
-      setCurrentUser(res.data);
-    } catch (error) {
-      console.error("Failed to fetch current user", error);
-    }
-  };
+      return res.data;
+    },
+    staleTime: 10 * 60 * 1000,
+  });
 
   const handleDelete = async (userId: string) => {
     if (!confirm("Are you sure you want to delete this user? This action cannot be undone.")) {
@@ -93,20 +84,12 @@ export default function UserTable({ role, title }: { role: string, title: string
     }
     try {
       await api.delete(`/admin/users/${userId}`);
-      fetchUsers(page);
+      // Delete hole data refetch korbo
+      queryClient.invalidateQueries({ queryKey: ["users", role] });
     } catch (error: any) {
       alert(error.response?.data?.detail || "Failed to delete user");
     }
   };
-
-  useEffect(() => {
-    fetchHubs();
-    fetchCurrentUser();
-  }, []);
-
-  useEffect(() => {
-    fetchUsers(page);
-  }, [role, page, selectedHub]);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
@@ -141,7 +124,7 @@ export default function UserTable({ role, title }: { role: string, title: string
                 className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium text-gray-900"
               >
                 <option value="all">All Hubs</option>
-                {hubs.map(h => (
+                {hubs.map((h: Hub) => (
                   <option key={h.id} value={h.id}>{h.name}</option>
                 ))}
               </select>
@@ -172,7 +155,7 @@ export default function UserTable({ role, title }: { role: string, title: string
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[400px]">
-        {loading ? (
+        {isLoading ? (
           <div className="flex flex-col items-center justify-center h-[400px] space-y-4">
             <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
             <p className="text-gray-500 font-medium">Loading {title.toLowerCase()}...</p>
@@ -287,7 +270,11 @@ export default function UserTable({ role, title }: { role: string, title: string
             setEditUser(null);
           }} 
           roleType={role as "manager" | "rider"} 
-          onSuccess={() => fetchUsers(0)}
+          onSuccess={() => {
+            // Success hole data refetch korbo
+            queryClient.invalidateQueries({ queryKey: ["users", role] });
+            setIsModalOpen(false);
+          }}
           editUser={editUser}
         />
       )}

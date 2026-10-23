@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
-import { Package, Users, Truck, MapPin, Building2, Phone, Bike, Clock, CheckCircle } from "lucide-react";
+import { Package, Users, Truck, MapPin, Building2, Phone, Bike, Clock, CheckCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 
@@ -40,38 +40,50 @@ type Hub = {
 
 export default function ManagerDashboard() {
   const { user } = useAuth();
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [myHub, setMyHub] = useState<Hub | null>(null);
-  const [recentParcels, setRecentParcels] = useState<Parcel[]>([]);
-  const [riders, setRiders] = useState<Rider[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [statsRes, parcelsRes, ridersRes, hubsRes] = await Promise.all([
-          api.get("/admin/stats"),
-          api.get("/admin/parcels"),
-          api.get("/riders"),
-          api.get("/hubs"),
-        ]);
-        
-        setStats(statsRes.data);
-        setRecentParcels(parcelsRes.data.slice(0, 5));
-        setRiders(ridersRes.data);
-        
-        // Manager er hub ta ber koro
-        const myHubData = hubsRes.data.find((h: Hub) => h.manager_id === user?.id);
-        setMyHub(myHubData || null);
-        
-      } catch (error) {
-        console.error("Failed to fetch manager data", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    if (user) fetchData();
-  }, [user]);
+  // 1. Fetch Stats
+  const { data: stats, isLoading: isLoadingStats } = useQuery<Stats>({
+    queryKey: ["manager-stats"],
+    queryFn: async () => {
+      const res = await api.get("/admin/stats");
+      return res.data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // 2. Fetch Recent Parcels (limit 5)
+  const { data: recentParcels = [], isLoading: isLoadingParcels } = useQuery<Parcel[]>({
+    queryKey: ["manager-recent-parcels"],
+    queryFn: async () => {
+      const res = await api.get("/admin/parcels");
+      return res.data.data.slice(0, 5); // top 5 only
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // 3. Fetch Riders
+  const { data: riders = [], isLoading: isLoadingRiders } = useQuery<Rider[]>({
+    queryKey: ["manager-riders"],
+    queryFn: async () => {
+      const res = await api.get("/riders");
+      return res.data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // 4. Fetch My Hub
+  const { data: myHub = null, isLoading: isLoadingHubs } = useQuery<Hub | null>({
+    queryKey: ["manager-hub", user?.id],
+    queryFn: async () => {
+      const res = await api.get("/hubs");
+      const myHubData = res.data.find((h: Hub) => h.manager_id === user?.id);
+      return myHubData || null;
+    },
+    staleTime: 10 * 60 * 1000,
+    enabled: !!user?.id, // user na thakle call korbe na
+  });
+
+  const isLoading = isLoadingStats || isLoadingParcels || isLoadingRiders || isLoadingHubs;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -83,10 +95,11 @@ export default function ManagerDashboard() {
     }
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+      <div className="flex flex-col justify-center items-center h-64 gap-4">
+        <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+        <p className="text-gray-500 font-medium">Loading your dashboard...</p>
       </div>
     );
   }

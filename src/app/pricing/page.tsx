@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { Search, ArrowRight, MapPin, Truck, Package } from "lucide-react";
 import Navbar from "@/components/landing/Navbar";
@@ -16,23 +17,17 @@ type HubRule = {
 };
 
 export default function PublicPricingPage() {
-  const [rules, setRules] = useState<HubRule[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
-  useEffect(() => {
-    const fetchPricing = async () => {
-      try {
-        const res = await api.get("/public/pricing-rules");
-        setRules(res.data.hub_rules);
-      } catch (error) {
-        console.error("Failed to load pricing", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchPricing();
-  }, []);
+  // React Query ব্যবহার করে ডেটা ফেচ করা
+  const { data: rules = [], isLoading } = useQuery<HubRule[]>({
+    queryKey: ["public-pricing-rules"],
+    queryFn: async () => {
+      const res = await api.get("/public/pricing-rules");
+      return res.data.hub_rules;
+    },
+    staleTime: 10 * 60 * 1000, // ১০ মিনিট ক্যাশ থাকবে
+  });
 
   const filteredRules = rules.filter(
     (r) =>
@@ -73,7 +68,7 @@ export default function PublicPricingPage() {
           </div>
 
           {/* Loading Skeleton */}
-          {loading && (
+          {isLoading && (
             <div className="space-y-4">
                {[1, 2, 3].map((i) => (
                  <div key={i} className="bg-white rounded-2xl p-6 animate-pulse h-40 md:h-24 shadow-sm border border-gray-100"></div>
@@ -82,7 +77,7 @@ export default function PublicPricingPage() {
           )}
 
           {/* Empty State */}
-          {!loading && filteredRules.length === 0 && (
+          {!isLoading && filteredRules.length === 0 && (
             <div className="text-center py-20 bg-white rounded-3xl border border-gray-100 shadow-sm">
               <MapPin className="w-12 h-12 text-gray-300 mx-auto mb-4" />
               <h3 className="text-xl font-bold text-gray-800">No routes found</h3>
@@ -91,7 +86,7 @@ export default function PublicPricingPage() {
           )}
 
           {/* --- DESKTOP TABLE VIEW (Hidden on Mobile) --- */}
-          {!loading && filteredRules.length > 0 && (
+          {!isLoading && filteredRules.length > 0 && (
             <>
               <div className="hidden md:block bg-white rounded-3xl border border-gray-100 shadow-xl shadow-gray-200/40 overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-500 delay-150">
                 <table className="w-full text-left border-collapse">
@@ -152,7 +147,6 @@ export default function PublicPricingPage() {
                     className="bg-white rounded-2xl p-5 border border-gray-100 shadow-lg shadow-gray-200/30 animate-in fade-in slide-in-from-bottom-2"
                     style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}
                   >
-                    {/* Route Header */}
                     <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-100 border-dashed">
                       <div className="flex flex-col">
                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">From</span>
@@ -167,7 +161,6 @@ export default function PublicPricingPage() {
                       </div>
                     </div>
 
-                    {/* Prices Grid */}
                     <div className="grid grid-cols-2 gap-3 mb-4">
                       <div className="bg-green-50/50 p-3 rounded-xl border border-green-100">
                         <span className="text-[11px] font-bold text-gray-500 block mb-1">Base Fare (1kg)</span>
@@ -179,7 +172,6 @@ export default function PublicPricingPage() {
                       </div>
                     </div>
 
-                    {/* Express Badge */}
                     <div className="flex items-center justify-center gap-1.5 bg-purple-50 text-purple-700 py-2 rounded-xl text-xs font-bold border border-purple-100">
                       <Truck className="w-4 h-4" /> Express Option: {rule.express_multiplier}x
                     </div>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { MapPin, Plus, Building2, X } from "lucide-react";
 
@@ -18,31 +19,33 @@ type Hub = {
 };
 
 export default function AdminZonesPage() {
-  const [zones, setZones] = useState<Zone[]>([]);
-  const [hubs, setHubs] = useState<Hub[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ name: "", city: "", hub_id: "" });
   const [submitting, setSubmitting] = useState(false);
+  
+  const queryClient = useQueryClient();
 
-  const fetchData = async () => {
-    try {
-      const [zonesRes, hubsRes] = await Promise.all([
-        api.get("/zones"),
-        api.get("/hubs"),
-      ]);
-      setZones(zonesRes.data);
-      setHubs(hubsRes.data);
-    } catch (error) {
-      console.error("Failed to fetch data", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // 1. Fetch Zones
+  const { data: zones = [], isLoading: isLoadingZones } = useQuery<Zone[]>({
+    queryKey: ["zones"],
+    queryFn: async () => {
+      const res = await api.get("/zones");
+      return res.data;
+    },
+    staleTime: 10 * 60 * 1000, // 10 minutes cache
+  });
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  // 2. Fetch Hubs
+  const { data: hubs = [], isLoading: isLoadingHubs } = useQuery<Hub[]>({
+    queryKey: ["hubs"],
+    queryFn: async () => {
+      const res = await api.get("/hubs");
+      return res.data;
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const isLoading = isLoadingZones || isLoadingHubs;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,7 +60,9 @@ export default function AdminZonesPage() {
       await api.post("/zones", payload);
       setIsModalOpen(false);
       setFormData({ name: "", city: "", hub_id: "" });
-      fetchData();
+      
+      // Notun zone add hole zones list refetch korbo
+      queryClient.invalidateQueries({ queryKey: ["zones"] });
     } catch (error: any) {
       alert(error.response?.data?.detail || "Failed to create zone");
     } finally {
@@ -67,7 +72,7 @@ export default function AdminZonesPage() {
 
   const inputClass = "w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-900 placeholder-gray-400 font-medium";
 
-  if (loading) return <div className="p-8 text-center text-gray-500">Loading zones...</div>;
+  if (isLoading) return <div className="p-8 text-center text-gray-500">Loading zones...</div>;
 
   return (
     <div className="space-y-6">

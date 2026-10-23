@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
-import { Package, Search, ExternalLink, Truck, CheckCircle, Clock, XCircle, ChevronRight, ArrowRight, CreditCard, AlertCircle } from "lucide-react";
+import { Package, Search, ExternalLink, Truck, CheckCircle, Clock, XCircle, ChevronRight, ArrowRight, CreditCard, AlertCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 type Parcel = {
@@ -13,31 +14,27 @@ type Parcel = {
   status: string;
   total_amount: number;
   created_at: string;
-  payment_status: string | null; // <-- Payment status add koro
+  payment_status: string | null;
 };
 
 type FilterType = "all" | "transit" | "delivered" | "pending";
 
 export default function MyParcelsPage() {
-  const [parcels, setParcels] = useState<Parcel[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [payingId, setPayingId] = useState<string | null>(null);
+  
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    const fetchParcels = async () => {
-      try {
-        const res = await api.get("/parcels");
-        setParcels(Array.isArray(res.data) ? res.data : []);
-      } catch (error) {
-        console.error("Failed to fetch parcels", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchParcels();
-  }, []);
+  // React Query ব্যবহার করে পার্সেল ফেচ করা
+  const { data: parcels = [], isLoading } = useQuery<Parcel[]>({
+    queryKey: ["my-parcels"],
+    queryFn: async () => {
+      const res = await api.get("/parcels");
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
   const handlePayment = async (parcelId: string, amount: number) => {
     setPayingId(parcelId);
@@ -93,9 +90,10 @@ export default function MyParcelsPage() {
     delivered: parcels.filter(p => p.status === "DELIVERED").length,
   };
 
-  if (loading) return (
-    <div className="flex justify-center items-center h-96">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+  if (isLoading) return (
+    <div className="flex flex-col justify-center items-center h-96 gap-4">
+      <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
+      <p className="text-gray-500 font-medium">Loading your parcels...</p>
     </div>
   );
 
