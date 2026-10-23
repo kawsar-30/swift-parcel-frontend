@@ -54,8 +54,8 @@ export default function AdminParcelsPage() {
   const [parcels, setParcels] = useState<Parcel[]>([]);
   
   // Custom Loading States
-  const [isInitialLoading, setIsInitialLoading] = useState(true); // প্রথমবার পেজ লোডের জন্য
-  const [isFetching, setIsFetching] = useState(false); // পেজ পরিবর্তনের জন্য
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
@@ -72,11 +72,9 @@ export default function AdminParcelsPage() {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
-  const fetchParcels = async (isInitial = false) => {
-    if (isInitial) setIsInitialLoading(true);
-    else setIsFetching(true);
-
+  const fetchParcels = async () => {
     try {
+      setIsFetching(true);
       const skip = page * limit;
       const res = await api.get(`/admin/parcels?skip=${skip}&limit=${limit}`);
       
@@ -86,14 +84,13 @@ export default function AdminParcelsPage() {
       console.error("❌ Failed to fetch parcels", error);
       setParcels([]);
     } finally {
-      if (isInitial) setIsInitialLoading(false);
-      else setIsFetching(false);
+      setIsInitialLoading(false);
+      setIsFetching(false);
     }
   };
 
   useEffect(() => {
-    // প্রথমবার এবং পেজ পরিবর্তনের সময় কল হবে
-    fetchParcels(page === 0 && parcels.length === 0); 
+    fetchParcels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
@@ -367,9 +364,9 @@ export default function AdminParcelsPage() {
       {selectedParcel && (
         <>
           <ParcelDetailsModal isOpen={isDetailsModalOpen} onClose={() => setIsDetailsModalOpen(false)} parcel={selectedParcel} />
-          <AssignRiderModal isOpen={isAssignModalOpen} onClose={() => setIsAssignModalOpen(false)} parcel={selectedParcel} onSuccess={() => fetchParcels(false)} />
-          <StatusUpdateModal isOpen={isStatusModalOpen} onClose={() => setIsStatusModalOpen(false)} parcelId={selectedParcel.id} currentStatus={selectedParcel.status} onSuccess={() => fetchParcels(false)} />
-          <TransferHubModal isOpen={isTransferModalOpen} onClose={() => setIsTransferModalOpen(false)} parcelId={selectedParcel.id} currentHubId={selectedParcel.hub_id} onSuccess={() => fetchParcels(false)} />
+          <AssignRiderModal isOpen={isAssignModalOpen} onClose={() => setIsAssignModalOpen(false)} parcel={selectedParcel} onSuccess={fetchParcels} />
+          <StatusUpdateModal isOpen={isStatusModalOpen} onClose={() => setIsStatusModalOpen(false)} parcelId={selectedParcel.id} currentStatus={selectedParcel.status} onSuccess={fetchParcels} />
+          <TransferHubModal isOpen={isTransferModalOpen} onClose={() => setIsTransferModalOpen(false)} parcelId={selectedParcel.id} currentHubId={selectedParcel.hub_id} onSuccess={fetchParcels} />
         </>
       )}
     </div>
